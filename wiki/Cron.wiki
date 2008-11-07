@@ -3,7 +3,7 @@
 =Cron (developmental)=
 ====================================
 
-Cache is a task scheduling engine for Google Appengine applications.
+Cron is a task scheduling engine for Google Appengine applications.
 You can schedule tasks using standard Unix cron syntax, with non-absolute
 urls used for the command string. For example
 {{{
