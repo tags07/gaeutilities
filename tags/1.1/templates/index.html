@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block header-content %}
+<h3>Welcome</h3>
+<p>Welcome to the appengine-utilities project demo site. appengine-utilities is a collection of utilities designed to reduce the amount of time required to build applications on top of the Google AppEngine environment. It includes:</p>
+<p>
+<ul>
+    <li><strong>sessions: </strong>A complete sessions management class that uses both the datastore and memcache to provide a high performance library while maintaining reliability.</li>
+    <li><strong>cache: </strong>A simple to use caching system that utilizes both the datastore and memcache for storage.</li>
+    <li><strong>flash: </strong>A cookie based messaging utility. Set a flash message to be displayed on the next request made by the user. This is also integrated into sessions.</li>
+    <li><strong>event: </strong>A subscribe/fire event system. Events are included in sessions and cache which can be hooked into using this class.</li>
+</ul>
+</p>
+{% endblock %}
+{% block content %}
+        <h2>Recent Updates</h2>
+        <p><strong>[10/26/2008]</strong>Project renamed to gaeutilities. 1.0 release.</p>
+
+{% endblock %}
