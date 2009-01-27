@@ -50,15 +50,16 @@ from rotmodel import ROTModel
 
 COOKIE_NAME = 'appengine-utilities-session-sid' # session token
 DEFAULT_COOKIE_PATH = '/'
-SESSION_EXPIRE_TIME = 7200 # sessions are valid for 7200 seconds (2 hours)
-CLEAN_CHECK_PERCENT = 50 # By default, 50% of all requests will clean the database
-INTEGRATE_FLASH = True # integrate functionality from flash module?
-CHECK_IP = True # validate sessions by IP
-CHECK_USER_AGENT = True # validate sessions by user agent
-SET_COOKIE_EXPIRES = True # Set to True to add expiration field to cookie
-SESSION_TOKEN_TTL = 5 # Number of seconds a session token is valid for.
-UPDATE_LAST_ACTIVITY = 60 # Number of seconds that may pass before
-                          # last_activity is updated
+SESSION_EXPIRE_TIME = 7200  # sessions are valid for 7200 seconds (2 hours)
+CLEAN_CHECK_PERCENT = 50    # By default, 50% of all requests will clean the database
+INTEGRATE_FLASH = True      # integrate functionality from flash module?
+CHECK_IP = True             # validate sessions by IP
+CHECK_USER_AGENT = True     # validate sessions by user agent
+SET_COOKIE_EXPIRES = True   # Set to True to add expiration field to cookie
+SESSION_TOKEN_TTL = 5       # Number of seconds a session token is valid for.
+UPDATE_LAST_ACTIVITY = 60   # Number of seconds that may pass before
+                            # last_activity is updated
+SAVE_NEW_SESSIONS = True    # Save new sessions by default or not
 
 class _AppEngineUtilities_Session(ROTModel):
     """
@@ -108,25 +109,29 @@ class Session(object):
             check_user_agent=CHECK_USER_AGENT,
             set_cookie_expires=SET_COOKIE_EXPIRES,
             session_token_ttl=SESSION_TOKEN_TTL,
-            last_activity_update=UPDATE_LAST_ACTIVITY):
+            last_activity_update=UPDATE_LAST_ACTIVITY,
+            save_new_sessions=SAVE_NEW_SESSIONS):
         """
         Initializer
 
         Args:
           cookie_name: The name for the session cookie stored in the browser.
           session_expire_time: The amount of time between requests before the
-              session expires.
+                session expires.
           clean_check_percent: The percentage of requests the will fire off a
-              cleaning routine that deletes stale session data.
+                cleaning routine that deletes stale session data.
           integrate_flash: If appengine-utilities flash utility should be
-              integrated into the session object.
+                integrated into the session object.
           check_ip: If browser IP should be used for session validation
           check_user_agent: If the browser user agent should be used for
-              sessoin validation.
+                sessoin validation.
           set_cookie_expires: True adds an expires field to the cookie so
-              it saves even if the browser is closed.
+                it saves even if the browser is closed.
           session_token_ttl: Number of sessions a session token is valid
-              for before it should be regenerated.
+                for before it should be regenerated.
+          last_activity_update: How often the last_activity field needs
+                to be updated.
+          save_new_sessions: If new sessions should be saved by default.
         """
 
         self.cookie_path = cookie_path
@@ -138,6 +143,7 @@ class Session(object):
         self.set_cookie_expires = set_cookie_expires
         self.session_token_ttl = session_token_ttl
         self.last_activity_update = last_activity_update
+        self.save_new_sessions = save_new_sessions
 
         # make sure the page is not cached in the browser
         self.no_cache_headers()
@@ -175,8 +181,8 @@ class Session(object):
             else:
                 self.session.ip = None
             self.session.sid = [self.sid]
-            # do put() here to get the session key
-            key = self.session.put()
+            if save_new_sessions:
+                do_put = True
         else:
             # check the age of the token to determine if a new one
             # is required
@@ -196,8 +202,8 @@ class Session(object):
                     do_put = True
 
         self.output_cookie[cookie_name] = self.sid
-        self.output_cookie[cookie_name]['path'] = cookie_path
-        if set_cookie_expires:
+        self.output_cookie[cookie_name]['path'] = self.cookie_path
+        if self.set_cookie_expires:
             self.output_cookie[cookie_name]['expires'] = \
                 self.session_expire_time
 
@@ -218,6 +224,12 @@ class Session(object):
         # CLEAN_CHECK_PERCENT variable)
         if random.randint(1, 100) < clean_check_percent:
             self._clean_old_sessions() 
+
+    def save(self):
+        """
+        Saves the session to the datastore.
+        """
+        self.session.put()
 
     def new_sid(self):
         """
@@ -392,7 +404,12 @@ class Session(object):
             return self.flash.msg
         if keyname in self.cache:
             return pickle.loads(str(self.cache[keyname]))
-        mc = memcache.get('sid-'+str(self.session.key()))
+        # if new sessions are not saved by default, NotSavedError
+        # will get raised. If this happens, raise KeyError.
+        try:
+            mc = memcache.get('sid-'+str(self.session.key()))
+        except db.NotSavedError:
+            raise KeyError(str(keyname))
         if mc is not None:
             if keyname in mc:
                 return mc[keyname]

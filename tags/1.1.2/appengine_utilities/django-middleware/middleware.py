@@ -3,13 +3,19 @@ import os
 
 from common.appengine_utilities import sessions
 
+# by default do not save sessions
+SAVE_NEW_SESSIONS = False
 
 class SessionMiddleware(object):
     TEST_COOKIE_NAME = 'testcookie'
     TEST_COOKIE_VALUE = 'worked'
 
     def process_request(self, request):
-        request.session = sessions.Session()
+        # save session if the user is logged in.
+        if not SAVE_NEW_SESSIONS:
+            request.session = sessions.Session(save_new_sessions = False)
+        else:
+            request.session = sessions.Session()
         request.session.set_test_cookie = self.set_test_cookie
         request.session.test_cookie_worked = self.test_cookie_worked
         request.session.delete_test_cookie = self.delete_test_cookie

@@ -104,3 +104,8 @@ Changelog
  - session: Bug found in the process to clear old sessions that was deleting data it shouldn't be. This was the cause of the mysterious missing session data bug. Thank you pant.lalit 
  - session: Bug fixed where clean_check_percent was being ignored.
  - session: Some tweaks done to delete_all_session(), though this feature shouldn't be considered complete yet. Needs more testing.
+
+1.1.3
+ - session: Added save_new_sessions option. By default this is set to True. If False, then new sessions will not be saved to the datastore by default.
+ - session: Added a save() function will save the session on demand.
+ - Django middleware: Modified the django middleware to not save sessions by default. Authentication Backends will need to handle saving the session before adding data to it.
