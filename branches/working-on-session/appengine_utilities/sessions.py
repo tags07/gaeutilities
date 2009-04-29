@@ -50,24 +50,150 @@ from rotmodel import ROTModel
 # you'll need to adjust the values to pull from there.
 
 
-class _AppEngineUtilities_Session(ROTModel):
+class _AppEngineUtilities_Session(db.Model):
     """
     Model for the sessions in the datastore. This contains the identifier and
     validation information for the session.
     """
 
     sid = db.StringListProperty()
+    session_key = db.FloatProperty()
     ip = db.StringProperty()
     ua = db.StringProperty()
     last_activity = db.DateTimeProperty(auto_now=True)
+    dirty = db.BooleanValue(default=False)
 
+    def put(self):
+        """
+        Extend put so that it writes vaules to memcache as well as the datastore,
+        and keeps them in sync, even when datastore writes fails.
+        """
+        if self.session_key:
+            mc = memcache.get("_AppEngineUtilities_Session" + self.session_key)
+            if mc:
+                #sync the attributes
+                mc['sid'] = self.sid
+                mc['session_key'] = self.session_key
+                mc['ip'] = self.ip
+                mc['ua'] = self.ua
+                mc['last_activity'] = datetime.datetime.now()
+                mc['dirty'] = self.dirty
+                mc['working'] = False
+                memcache.set("_AppEngineUtilities_Session" + self.session_key, mc)
+            else:
+                # no memcache item, need to set it
+                mc = {}
+                mc['sid'] = self.sid
+                mc['session_key'] = self.session_key
+                mc['ip'] = self.ip
+                mc['ua'] = self.ua
+                mc['last_activity'] = datetime.datetime.now()
+                mc['dirty'] = self.dirty
+                mc['data'] = self.get_items_ds()
+                mc['working'] = False
+                memcache.set("_AppEngineUtilities_Session" + self.session_key, mc)
+        else:
+            # new session, generate a new key, which will handle the put and set the memcache
+            self.create_key()
 
-class _AppEngineUtilities_SessionData(ROTModel):
+        try:
+            db.put(self)
+        except:
+            mc['dirty'] = True
+            memcache.set("_AppEngineUtilities_Session" + self.session_key, mc)
+
+    def get_session(self, session_key=None):
+        mc = memcache.get("_AppEngineUtilities_Session" + session_key):
+        if mc:
+            if mc['dirty'] and mc['working'] != False:
+                mc['working'] = True
+                mc = memcache.set("_AppEngineUtilities_Session" + session_key)
+                query = _AppEngineUtilities_Session.all()
+                query.filter("session_key = ", mc['session_key'])
+                results = query.fetch(1)
+                if len(results) > 0:
+                    # results exists, update it
+                    session = results[0]
+                    session.sid = mc['sid']
+                    session.last_activity = mc['last_activity']
+                    try:
+                        db.put(session)
+                        for i in mc['data']:
+                            q = _AppEngineUtilities_SessionData.all()
+                            query.filter("session_key = ", session_key)
+                            query.filter("keyname = ", i)
+                            results = query.fetch(1)
+                            if len(results) > 0:
+                                results[0].value = mc['data'][i]
+                                results[0].put()
+                            else:
+                                item = _AppEngineUtilities_SessionData()
+                                item.session_key = session_key
+                                item.keyname = i
+                                item.value = mc['data'][i]
+                                item.put()
+                        mc['dirty'] = False
+                        mc['working'] = False
+                        mc = memcache.set("_AppEngineUtilities_Session" + session_key)
+                    except:
+                        # operation above failed, most likely a datastore write error,
+                        # leave the memcache operation as dirty to be retried on the next request.
+                        mc['working'] = False
+                        mc = memcache.set("_AppEngineUtilities_Session" + session_key)
+            #todo if dirty, try to freshen up ds
+            return mc
+        query = _AppEngineUtilities_Session.all()
+        query.filter("session_key = ", session_key)
+        results = query.fetch(1)
+        if len(results) > 0:
+            mc = {}
+            mc['sid'] = results[0].sid
+            mc['session_key'] = results[0].session_key
+            mc['ip'] = results[0].ip
+            mc['ua'] = results[0].ua
+            mc['last_activity'] = datetime.datetime.now()
+            mc['dirty'] = results[0].dirty
+            mc['data'] = results[0].get_items_ds()
+            memcache.set("_AppEngineUtilities_Session" + results[0].session_key, mc)
+            return mc
+        else:
+            return None
+
+    def get_items_ds(self):
+        query = _AppEngineUtilities_SessionData.all()
+        query.filter('session_key', self.session_key)
+        results = query.fetch(1000)
+        items = {}
+        for r in results:
+            items[r.keyname] = value
+        return items
+
+    def create_key(self):
+        self.session_key = time.time()
+        valid = False
+        while valid == False:
+            if memcache.get("_AppEngineUtilities_Session" + self.session_key):
+                self.session_key = self.session_key + 0.001
+            else:
+                query = _AppEngineUtilities_Session.all()
+                query.filter("session_key = ", self.session_key)
+                results = query.fetch(1)
+                if len(results) > 0:
+                    self.session_key = self.session_key + 0.001
+                else:
+                    try:
+                        self.put()
+                    except:
+                        self.dirty = True
+                    valid = True
+            
+
+class _AppEngineUtilities_SessionData(db.Model):
     """
     Model for the session data in the datastore.
     """
 
-    session = db.ReferenceProperty(_AppEngineUtilities_Session)
+    session_key = db.FloatProperty()
     keyname = db.StringProperty()
     content = db.BlobProperty()
 
