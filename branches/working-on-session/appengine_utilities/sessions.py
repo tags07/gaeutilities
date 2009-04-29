@@ -50,24 +50,109 @@ from rotmodel import ROTModel
 # you'll need to adjust the values to pull from there.
 
 
-class _AppEngineUtilities_Session(ROTModel):
+class _AppEngineUtilities_Session(db.Model):
     """
     Model for the sessions in the datastore. This contains the identifier and
     validation information for the session.
     """
 
     sid = db.StringListProperty()
+    session_key = db.FloatProperty()
     ip = db.StringProperty()
     ua = db.StringProperty()
     last_activity = db.DateTimeProperty(auto_now=True)
+    dirty = db.BooleanProperty(default=False)
+    working = db.BooleanProperty(default=False)
 
+    def put(self):
+        """
+        Extend put so that it writes vaules to memcache as well as the datastore,
+        and keeps them in sync, even when datastore writes fails.
+        """
+        if self.session_key:
+            memcache.set("_AppEngineUtilities_Session" + str(self.session_key), self)
+        else:
+            # new session, generate a new key, which will handle the put and set the memcache
+            self.create_key()
 
-class _AppEngineUtilities_SessionData(ROTModel):
+        try:
+            self.dirty = False
+            db.put(self)
+        except:
+            self.dirty = True
+            memcache.set("_AppEngineUtilities_Session" + str(self.session_key), self)
+
+        return self
+
+    @classmethod
+    def get_session(cls, sid=None):
+        """
+        Uses the passed sid to get a session object from memcache, or datastore
+        if a valid one exists.
+        """
+        if sid == None:
+            return None
+        session_key = sid.split('_')[0]
+        session = memcache.get("_AppEngineUtilities_Session" + str(session_key))
+        if session:
+            if session.dirty == True and session.working != False:
+                # the working bit is used to make sure multiple requests, which can happen
+                # with ajax oriented sites, don't try to put at the same time
+                session.working = True
+                memcache.set("_AppEngineUtilities_Session" + str(session_key), session)
+                session.put()
+            if sid in session.sid:
+                return session
+            else:
+                return None
+ 
+        # Not in memcache, check datastore
+        query = _AppEngineUtilities_Session.all()
+        query.filter("sid = ", sid)
+        results = query.fetch(1)
+        if len(results) > 0:
+            memcache.set("_AppEngineUtilities_Session" + str(session_key), results[0])
+            return results[0]
+        else:
+            return None
+
+    def get_items_ds(self):
+        query = _AppEngineUtilities_SessionData.all()
+        query.filter('session_key', self.session_key)
+        results = query.fetch(1000)
+        items = {}
+        for r in results:
+            items[r.keyname] = value
+        return items
+
+    def create_key(self):
+        self.session_key = time.time()
+        valid = False
+        while valid == False:
+            # verify session_key is unique
+            if memcache.get("_AppEngineUtilities_Session" + str(self.session_key)):
+                self.session_key = self.session_key + 0.001
+            else:
+                query = _AppEngineUtilities_Session.all()
+                query.filter("session_key = ", self.session_key)
+                results = query.fetch(1)
+                if len(results) > 0:
+                    self.session_key = self.session_key + 0.001
+                else:
+                    try:
+                        self.put()
+                    except:
+                        self.dirty = True
+                        memcache.set("_AppEngineUtilities_Session" + self.session_key, self)
+                    valid = True
+            
+
+class _AppEngineUtilities_SessionData(db.Model):
     """
     Model for the session data in the datastore.
     """
 
-    session = db.ReferenceProperty(_AppEngineUtilities_Session)
+    session_key = db.FloatProperty()
     keyname = db.StringProperty()
     content = db.BlobProperty()
 
@@ -235,8 +320,8 @@ class Session(object):
             # check for existing cookie
             if self.cookie.get(cookie_name):
                 self.sid = self.cookie[cookie_name].value
-                self.session = self._get_session() # will return None if
-                                                   # sid expired
+                self.session = _AppEngineUtilities_Session.get_session(self.sid) # will return None if
+                                                                                 # sid expired
                 if self.session:
                     new_session = False
 
@@ -255,7 +340,7 @@ class Session(object):
                     self.session.ip = None
                 self.session.sid = [self.sid]
                 # do put() here to get the session key
-                key = self.session.put()
+                self.session.put()
             else:
                 # check the age of the token to determine if a new one
                 # is required
