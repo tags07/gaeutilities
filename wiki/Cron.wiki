@@ -1,4 +1,6 @@
 #labels Phase-QA
+=CRON IS NOW DEPRECATED, ALL USERS SHOULD SWITCH TO GOOGLE'S NEW CRON IMPLEMENTATION=
+
 ====================================
 =Cron (developmental)=
 ====================================
