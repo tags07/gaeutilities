@@ -36,6 +36,7 @@ import Cookie
 import pickle
 import __main__
 from time import strftime
+import logging
 
 # google appengine imports
 from google.appengine.ext import db
@@ -81,6 +82,7 @@ class _AppEngineUtilities_Session(db.Model):
         try:
             self.dirty = False
             db.put(self)
+            memcache.set("_AppEngineUtilities_Session_" + str(self.session_key), self)
         except:
             self.dirty = True
             memcache.set("_AppEngineUtilities_Session_" + str(self.session_key), self)
@@ -108,6 +110,7 @@ class _AppEngineUtilities_Session(db.Model):
                 memcache.set("_AppEngineUtilities_Session_" + str(session_key), session)
                 session.put()
             if sid in session.sid:
+                logging.info('grabbed session from memcache')
                 return session
             else:
                 return None
@@ -119,6 +122,7 @@ class _AppEngineUtilities_Session(db.Model):
         if len(results) > 0:
             memcache.set("_AppEngineUtilities_Session_" + str(session_key), results[0])
             memcache.set("_AppEngineUtilities_SessionData_" + str(session_key), results[0].get_items_ds())
+            logging.info('grabbed session from datastore')
             return results[0]
         else:
             return None
@@ -145,6 +149,13 @@ class _AppEngineUtilities_Session(db.Model):
             for item in mc:
                 if item.keyname == keyname:
                     return item
+        query = _AppEngineUtilities_SessionData.all()
+        query.filter("session_key = ", self.session_key)
+        query.filter("keyname = ", keyname)
+        results = query.fetch(1)
+        if len(results) > 0:
+            memcache.set("_AppEngineUtilities_SessionData_" + str(self.session_key), self.get_items_ds())
+            return results[0]
         return None
 
     def get_items_ds(self):
@@ -189,9 +200,10 @@ class _AppEngineUtilities_Session(db.Model):
                 else:
                     try:
                         self.put()
+                        memcache.set("_AppEngineUtilities_Session_" + str(self.session_key), self)
                     except:
                         self.dirty = True
-                        memcache.set("_AppEngineUtilities_Session_" + self.session_key, self)
+                        memcache.set("_AppEngineUtilities_Session_" + str(self.session_key), self)
                     valid = True
             
 class _AppEngineUtilities_SessionData(db.Model):
@@ -223,11 +235,13 @@ class _AppEngineUtilities_SessionData(db.Model):
             for item in mc_items:
                 if value_updated == True:
                     break
-                if item.keyname == keyname:
+                if item.keyname == self.keyname:
                     item.content = self.content
+                    memcache.set("_AppEngineUtilities_SessionData_" + str(self.session_key), mc_items)
                     break
             if value_updated == False:
                 mc_items.append(self)
+                memcache.set("_AppEngineUtilities_SessionData_" + str(self.session_key), mc_items)
 
     def delete(self):
         """
