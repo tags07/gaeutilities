@@ -236,10 +236,13 @@ class _AppEngineUtilities_SessionData(db.Model):
                 if value_updated == True:
                     break
                 if item.keyname == self.keyname:
+                    logging.info("updating " + self.keyname)
                     item.content = self.content
                     memcache.set("_AppEngineUtilities_SessionData_" + str(self.session_key), mc_items)
+                    value_updated = True
                     break
             if value_updated == False:
+                #logging.info("adding " + self.keyname)
                 mc_items.append(self)
                 memcache.set("_AppEngineUtilities_SessionData_" + str(self.session_key), mc_items)
 
@@ -455,6 +458,7 @@ class Session(object):
                 duration = datetime.timedelta(seconds=self.session_token_ttl)
                 session_age_limit = datetime.datetime.now() - duration
                 if self.session.last_activity < session_age_limit:
+                    logging.info("UPDATING SID " + str(self.session.last_activity) + " - " + str(session_age_limit))
                     self.sid = self.new_sid()
                     if len(self.session.sid) > 2:
                         self.session.sid.remove(self.session.sid[0])
