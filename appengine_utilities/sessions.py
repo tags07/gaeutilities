@@ -61,7 +61,7 @@ class _AppEngineUtilities_Session(db.Model):
     session_key = db.FloatProperty()
     ip = db.StringProperty()
     ua = db.StringProperty()
-    last_activity = db.DateTimeProperty(auto_now=True)
+    last_activity = db.DateTimeProperty()
     dirty = db.BooleanProperty(default=False)
     working = db.BooleanProperty(default=False)
     deleted = db.BooleanProperty(default=False) # used for cases where
@@ -458,7 +458,7 @@ class Session(object):
                 duration = datetime.timedelta(seconds=self.session_token_ttl)
                 session_age_limit = datetime.datetime.now() - duration
                 if self.session.last_activity < session_age_limit:
-                    logging.info("UPDATING SID " + str(self.session.last_activity) + " - " + str(session_age_limit))
+                    logging.info("UPDATING SID LA = " + str(self.session.last_activity) + " - TL = " + str(session_age_limit))
                     self.sid = self.new_sid()
                     if len(self.session.sid) > 2:
                         self.session.sid.remove(self.session.sid[0])
@@ -479,6 +479,8 @@ class Session(object):
 
             if do_put:
                 if self.sid != None or self.sid != "":
+                    logging.info("doing put")
+                    self.session.last_activity = datetime.datetime.now()
                     self.session.put()
 
         if self.set_cookie_expires:
