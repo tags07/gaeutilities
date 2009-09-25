@@ -13,7 +13,7 @@ Using Cache
 
 Make it available simply by importing the class, and initializing it.
 {{{
-    from appengine_utilities.sessions import Cache
+    from appengine_utilities.cache import Cache
     self.cache = Cache()
 }}}
 Once initialized, you can use cache like any other dictionary object.
